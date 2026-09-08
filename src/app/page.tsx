@@ -3,262 +3,202 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 
-export default function FormAbsensiPage() {
+export default function StudentAttendancePage() {
   const [tab, setTab] = useState<'masuk' | 'keluar'>('masuk');
-  const [inputNis, setInputNis] = useState('');
-  const [siswaData, setSiswaData] = useState<any>(null);
-  const [lokasi, setLokasi] = useState('Mencari lokasi...');
-  const [foto, setFoto] = useState<string | null>(null);
+  const [nis, setNis] = useState('');
+  const [studentInfo, setStudentInfo] = useState<{ nama: string; dudi: string } | null>(null);
+  const [location, setLocation] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pesan, setPesan] = useState('');
-
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Cari data siswa otomatis saat NIS diketik
-  const handleCariNis = async (nis: string) => {
-    setInputNis(nis);
-    if (nis.length >= 3) {
-      const { data } = await supabase
-        .from('master_siswa')
-        .select('*')
-        .eq('nis', nis.trim())
-        .single();
-      
-      if (data) {
-        setSiswaData(data);
-        setPesan('');
-      } else {
-        setSiswaData(null);
-      }
-    } else {
-      setSiswaData(null);
-    }
-  };
-
-  // Ambil Lokasi GPS
+  // Ambil Geolocation
   useEffect(() => {
-    if ('geolocation' in navigator) {
+    if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => setLokasi(`${pos.coords.latitude}, ${pos.coords.longitude}`),
-        (err) => setLokasi('Gagal mengambil GPS: ' + err.message)
+        (pos) => setLocation(`${pos.coords.latitude}, ${pos.coords.longitude}`),
+        () => setLocation('Lokasi tidak diizinkan')
       );
     }
   }, []);
 
-  // Akses Kamera
+  // Nyalakan Kamera
   useEffect(() => {
-    if (tab === 'masuk') {
-      navigator.mediaDevices
-        ?.getUserMedia({ video: true })
-        .then((stream) => {
-          if (videoRef.current) videoRef.current.srcObject = stream;
-        })
-        .catch((err) => console.error('Kamera error:', err));
-    }
-  }, [tab]);
-
-  const capturePhoto = () => {
-    if (!videoRef.current) return;
-    const canvas = document.createElement('canvas');
-    canvas.width = videoRef.current.videoWidth || 320;
-    canvas.height = videoRef.current.videoHeight || 240;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      setFoto(canvas.toDataURL('image/jpeg'));
-    }
-  };
-
-  // Submit Absen Masuk
-  const handleAbsenMasuk = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!siswaData) return setPesan('NIS tidak terdaftar! Periksa kembali NIS kamu.');
-    if (!foto) return setPesan('Silakan ambil foto bukti terlebih dahulu!');
-
-    setLoading(true);
-    setPesan('');
-
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const nowTime = new Date().toLocaleTimeString('id-ID');
-
-      const { error } = await supabase.from('presensi').insert([
-        {
-          nis: siswaData.nis,
-          nama: siswaData.nama,
-          dudi: siswaData.sekolah || siswaData.dudi,
-          tanggal: today,
-          waktu_masuk: nowTime,
-          lokasi,
-          foto_bukti: foto,
-          status: 'hadir',
-        },
-      ]);
-
-      if (error) throw error;
-
-      setPesan(`Absen masuk berhasil untuk ${siswaData.nama}!`);
-      setInputNis('');
-      setSiswaData(null);
-      setFoto(null);
-    } catch (err: any) {
-      setPesan('Gagal absen masuk: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Submit Absen Keluar
-  const handleAbsenKeluar = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!siswaData) return setPesan('NIS tidak terdaftar!');
-
-    setLoading(true);
-    setPesan('');
-
-    try {
-      const today = new Date().toISOString().split('T')[0];
-      const nowTime = new Date().toLocaleTimeString('id-ID');
-
-      const { data, error: findError } = await supabase
-        .from('presensi')
-        .select('*')
-        .eq('nis', siswaData.nis)
-        .eq('tanggal', today)
-        .order('id', { ascending: false })
-        .limit(1);
-
-      if (findError) throw findError;
-
-      if (!data || data.length === 0) {
-        setPesan(`NIS "${siswaData.nis}" (${siswaData.nama}) belum melakukan absen masuk hari ini.`);
-        setLoading(false);
-        return;
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      } catch (err) {
+        console.error('Kamera gagal diakses:', err);
       }
+    }
+    startCamera();
+  }, []);
 
-      const { error: updateError } = await supabase
-        .from('presensi')
-        .update({ jam_keluar: nowTime })
-        .eq('id', data[0].id);
+  // Cari Data Siswa Berdasarkan NIS
+  const handleNisChange = async (value: string) => {
+    setNis(value);
+    if (value.length >= 3) {
+      const { data } = await supabase
+        .from('master_siswa')
+        .select('nama, dudi')
+        .eq('nis', value)
+        .single();
+      if (data) setStudentInfo(data);
+      else setStudentInfo(null);
+    } else {
+      setStudentInfo(null);
+    }
+  };
 
-      if (updateError) throw updateError;
+  // Tangkap Foto dari WebCam
+  const capturePhoto = () => {
+    if (!videoRef.current) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth || 640;
+    canvas.height = videoRef.current.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx?.drawImage(videoRef.current, 0, 0);
+    return canvas.toDataURL('image/jpeg');
+  };
 
-      setPesan(`Absen keluar berhasil untuk ${siswaData.nama}!`);
-      setInputNis('');
-      setSiswaData(null);
+  // Submit Absen
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nis) return alert('Silakan masukkan NIS terlebih dahulu!');
+    
+    setLoading(true);
+    const capturedPhoto = capturePhoto();
+    const today = new Date().toISOString().split('T')[0];
+    const currentTime = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+
+    try {
+      if (tab === 'masuk') {
+        const { error } = await supabase.from('presensi').insert({
+          nis,
+          nama: studentInfo?.nama || 'Siswa PKL',
+          dudi: studentInfo?.dudi || '-',
+          tanggal: today,
+          waktu_masuk: currentTime,
+          lokasi: location,
+          foto_bukti: capturedPhoto,
+          status: 'hadir',
+        });
+        if (error) throw error;
+        alert('Absen Masuk Berhasil!');
+      } else {
+        const { error } = await supabase
+          .from('presensi')
+          .update({ jam_keluar: currentTime })
+          .eq('nis', nis)
+          .eq('tanggal', today);
+        if (error) throw error;
+        alert('Absen Keluar Berhasil!');
+      }
+      setNis('');
+      setStudentInfo(null);
     } catch (err: any) {
-      setPesan('Gagal absen keluar: ' + err.message);
+      alert('Gagal absen: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-xl shadow-md overflow-hidden p-6 space-y-6">
-        {/* KODE BARU */}
-{/* Header Judul Resmi Bertingkat */}
-<div className="border-b pb-4 mb-4">
-  {/* Tombol Login Pengelola (Pojok Kanan Atas) */}
-  <div className="flex justify-end mb-2">
-    <a
-      href="/login"
-      className="text-[11px] bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1"
-    >
-      🔒 <span>Login Pengelola / DUDI</span>
-    </a>
-  </div>
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-6 space-y-4">
+        
+        {/* Header Judul Rapi Bertingkat */}
+        <div className="border-b pb-4">
+          <div className="flex justify-end mb-2">
+            <a
+              href="/login"
+              className="text-[11px] bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1"
+            >
+              🔒 <span>Login Pengelola / DUDI</span>
+            </a>
+          </div>
 
-  {/* Judul Bertingkat Rapi & Simetris */}
-  <div className="text-center space-y-0.5">
-    <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">
-      Absensi Siswa PKL
-    </h1>
-    <h2 className="text-xs font-bold text-blue-700 uppercase tracking-wide">
-      Fakultas Sains dan Teknologi
-    </h2>
-    <h3 className="text-xs font-semibold text-slate-600">
-      Universitas Labuhanbatu
-    </h3>
-  </div>
-</div>
-  <a href="/login" className="self-start md:self-auto text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 font-medium transition">
-    🔒 Login Pengelola / DUDI
-  </a>
-</div>
+          <div className="text-center space-y-1">
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">
+              Absensi Siswa PKL
+            </h1>
+            <h2 className="text-xs font-bold text-blue-700 uppercase tracking-wide">
+              Fakultas Sains dan Teknologi
+            </h2>
+            <h3 className="text-xs font-semibold text-slate-600">
+              Universitas Labuhanbatu
+            </h3>
+          </div>
+        </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        {/* Tab Switcher */}
+        <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg">
           <button
-            onClick={() => { setTab('masuk'); setPesan(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-md transition ${tab === 'masuk' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+            onClick={() => setTab('masuk')}
+            className={`py-2 text-xs font-bold rounded-md transition ${
+              tab === 'masuk' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'
+            }`}
           >
             Absen Masuk
           </button>
           <button
-            onClick={() => { setTab('keluar'); setPesan(''); }}
-            className={`flex-1 py-2 text-sm font-semibold rounded-md transition ${tab === 'keluar' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+            onClick={() => setTab('keluar')}
+            className={`py-2 text-xs font-bold rounded-md transition ${
+              tab === 'keluar' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500'
+            }`}
           >
             Absen Keluar
           </button>
         </div>
 
-        {pesan && (
-          <div className="p-3 text-sm rounded bg-blue-50 text-blue-700 font-medium text-center">
-            {pesan}
-          </div>
-        )}
-
-        <form onSubmit={tab === 'masuk' ? handleAbsenMasuk : handleAbsenKeluar} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Ketik NIS Siswa</label>
+            <label className="block font-semibold text-slate-700 mb-1">Ketik NIS Siswa</label>
             <input
               type="text"
               required
+              value={nis}
+              onChange={(e) => handleNisChange(e.target.value)}
               placeholder="Masukkan Nomor Induk Siswa..."
-              value={inputNis}
-              onChange={(e) => handleCariNis(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-slate-800 text-sm focus:ring-2 focus:ring-blue-500 font-mono"
+              className="w-full px-3 py-2 border rounded-lg text-slate-800 font-mono focus:ring-2 focus:ring-blue-600"
+            />
+            {studentInfo && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
+                <p className="font-bold">{studentInfo.nama}</p>
+                <p className="text-[10px] text-slate-600">Mitra: {studentInfo.dudi}</p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Lokasi GPS</label>
+            <input
+              type="text"
+              readOnly
+              value={location || 'Mengambil lokasi...'}
+              className="w-full px-3 py-2 border rounded-lg bg-slate-50 text-slate-600 font-mono"
             />
           </div>
 
-          {siswaData ? (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 space-y-1">
-              <div><strong>Siswa Ditemukan:</strong> {siswaData.nama}</div>
-              <div><strong>Asal DUDI/Sekolah:</strong> {siswaData.sekolah || siswaData.dudi}</div>
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">
+              Kamera Bukti {tab === 'masuk' ? 'Masuk' : 'Keluar'}
+            </label>
+            <div className="relative rounded-lg overflow-hidden border bg-black aspect-video flex items-center justify-center">
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             </div>
-          ) : inputNis.length >= 3 ? (
-            <div className="p-2 bg-rose-50 border border-rose-200 rounded text-xs text-rose-600 text-center">
-              Siswa dengan NIS "{inputNis}" tidak ditemukan dalam sistem.
-            </div>
-          ) : null}
-
-          {tab === 'masuk' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Lokasi GPS</label>
-                <input type="text" readOnly value={lokasi} className="w-full px-3 py-2 border rounded-lg text-sm bg-slate-50 text-slate-600 font-mono" />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Kamera Bukti Masuk</label>
-                <div className="bg-black rounded-lg overflow-hidden flex flex-col items-center justify-center min-h-[180px]">
-                  {foto ? <img src={foto} alt="Bukti" className="w-full h-auto" /> : <video ref={videoRef} autoPlay playsInline className="w-full h-auto" />}
-                </div>
-                <button type="button" onClick={capturePhoto} className="w-full mt-2 bg-slate-800 text-white text-xs py-2 rounded-lg hover:bg-slate-700">
-                  {foto ? '📷 Ambil Ulang Foto' : '📷 Ambil Foto'}
-                </button>
-              </div>
-            </>
-          )}
+          </div>
 
           <button
             type="submit"
-            disabled={loading || !siswaData}
-            className={`w-full text-white font-semibold py-2.5 rounded-lg text-sm transition ${tab === 'masuk' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'} disabled:bg-slate-300`}
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-lg transition"
           >
-            {loading ? 'Proses...' : tab === 'masuk' ? 'Kirim Absen Masuk' : 'Kirim Absen Keluar'}
+            {loading ? 'Proses Absen...' : `Kirim ${tab === 'masuk' ? 'Absen Masuk' : 'Absen Keluar'}`}
           </button>
         </form>
+
       </div>
     </div>
   );
