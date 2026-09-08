@@ -160,10 +160,11 @@ export default function FormAbsensiPage() {
 <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-3 gap-2">
   <div>
     <h1 className="text-lg font-bold text-slate-800 leading-tight">
-      Absensi PKL Siswa
+      Absensi Siswa PKL
     </h1>
     <p className="text-xs font-semibold text-blue-700 mt-0.5">
-      Fakultas Sains dan Teknologi Universitas Labuhanbatu
+      Fakultas Sains dan Teknologi
+      Universitas Labuhanbatu
     </p>
   </div>
   <a href="/login" className="self-start md:self-auto text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 font-medium transition">
