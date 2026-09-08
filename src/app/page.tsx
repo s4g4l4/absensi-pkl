@@ -156,12 +156,20 @@ export default function FormAbsensiPage() {
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-md overflow-hidden p-6 space-y-6">
-        <div className="flex justify-between items-center border-b pb-3">
-          <h1 className="text-xl font-bold text-slate-800">Form Absensi PKL</h1>
-          <a href="/login" className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 font-medium">
-            🔒 Login Pengelola / DUDI
-          </a>
-        </div>
+        {/* KODE BARU */}
+<div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-3 gap-2">
+  <div>
+    <h1 className="text-lg font-bold text-slate-800 leading-tight">
+      Absensi PKL Siswa
+    </h1>
+    <p className="text-xs font-semibold text-blue-700 mt-0.5">
+      Fakultas Sains dan Teknologi Universitas Labuhanbatu
+    </p>
+  </div>
+  <a href="/login" className="self-start md:self-auto text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 font-medium transition">
+    🔒 Login Pengelola / DUDI
+  </a>
+</div>
 
         <div className="flex bg-slate-100 p-1 rounded-lg">
           <button
