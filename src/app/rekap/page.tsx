@@ -15,6 +15,7 @@ export default function RekapPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [userRole, setUserRole] = useState<string>('');
+  const [userDudi, setUserDudi] = useState<string>('');
 
   // Modal State untuk Edit Data (Hanya Admin BAAK)
   const [showModalEdit, setShowModalEdit] = useState(false);
@@ -24,26 +25,33 @@ export default function RekapPage() {
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('is_logged_in');
     const role = localStorage.getItem('user_role') || '';
+    const dudi = localStorage.getItem('user_dudi') || '';
 
     if (!isLoggedIn) {
-      // Jika belum login, kembalikan ke halaman login
       router.push('/login');
       return;
     }
 
     setUserRole(role);
-    fetchData();
+    setUserDudi(dudi);
+    fetchData(role, dudi);
   }, [router]);
 
-  // Ambil Data Presensi dari Supabase
-  const fetchData = async () => {
+  // Ambil Data Presensi dari Supabase (Dengan Filter DUDI Otomatis)
+  const fetchData = async (role: string, dudi: string) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('presensi')
         .select('*')
         .order('tanggal', { ascending: false });
 
+      // 🔒 ISOLASI DATA DUDI: Jika login sebagai DUDI, kunci filter HANYA untuk DUDI/sekolah tersebut
+      if (role === 'dudi' && dudi) {
+        query = query.ilike('dudi', `%${dudi}%`);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       setDataPresensi(data || []);
     } catch (err: any) {
@@ -53,16 +61,19 @@ export default function RekapPage() {
     }
   };
 
-  // Logout Pengelola
+  // Logout Pengelola / DUDI
   const handleLogout = () => {
     localStorage.removeItem('is_logged_in');
     localStorage.removeItem('user_role');
+    localStorage.removeItem('user_dudi');
     router.push('/login');
   };
 
-  // Filter Data berdasarkan Nama/Keyword dan Rentang Tanggal
+  // Filter Pencarian Nama & Rentang Tanggal
   const filteredData = dataPresensi.filter((item) => {
-    const matchesSearch = item.nama?.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      item.nama?.toLowerCase().includes(search.toLowerCase()) ||
+      item.nis?.toLowerCase().includes(search.toLowerCase());
     const matchesDate =
       (!startDate || item.tanggal >= startDate) &&
       (!endDate || item.tanggal <= endDate);
@@ -81,7 +92,7 @@ export default function RekapPage() {
         const { error } = await supabase.from('presensi').delete().eq('id', id);
         if (error) throw error;
         alert('Data berhasil dihapus!');
-        fetchData();
+        fetchData(userRole, userDudi);
       } catch (err: any) {
         alert('Gagal menghapus data: ' + err.message);
       }
@@ -107,7 +118,9 @@ export default function RekapPage() {
       const { error } = await supabase
         .from('presensi')
         .update({
+          nis: editData.nis,
           nama: editData.nama,
+          dudi: editData.dudi,
           tanggal: editData.tanggal,
           waktu_masuk: editData.waktu_masuk,
           jam_keluar: editData.jam_keluar,
@@ -118,7 +131,7 @@ export default function RekapPage() {
       if (error) throw error;
       alert('Data presensi berhasil diperbarui!');
       setShowModalEdit(false);
-      fetchData();
+      fetchData(userRole, userDudi);
     } catch (err: any) {
       alert('Gagal memperbarui data: ' + err.message);
     }
@@ -128,7 +141,9 @@ export default function RekapPage() {
   const exportToExcel = () => {
     const dataFormatted = filteredData.map((item, index) => ({
       No: index + 1,
+      NIS: item.nis || '-',
       Nama_Siswa: item.nama,
+      Asal_DUDI_Sekolah: item.dudi || '-',
       Tanggal: item.tanggal,
       Jam_Masuk: item.waktu_masuk || '-',
       Jam_Keluar: item.jam_keluar || '-',
@@ -145,21 +160,25 @@ export default function RekapPage() {
   // Ekspor PDF Laporan Resmi
   const exportToPDF = () => {
     const doc = new jsPDF();
-    
-    // Kop Surat FST ULB
+
     doc.setFontSize(14);
     doc.text('UNIVERSITAS LABUHANBATU - FAKULTAS SAINS DAN TEKNOLOGI', 105, 15, { align: 'center' });
     doc.setFontSize(10);
-    doc.text('BIRO ADMINISTRASI AKADEMIK DAN KEMAHASINSAAN (BAAK)', 105, 21, { align: 'center' });
+    doc.text('BIRO ADMINISTRASI AKADEMIK DAN KEMAHASISWAAN (BAAK)', 105, 21, { align: 'center' });
     doc.text('Jl. SM. Raja No. 126-A Rantauprapat, Labuhanbatu - Sumatera Utara', 105, 26, { align: 'center' });
     doc.line(14, 30, 196, 30);
 
     doc.setFontSize(12);
-    doc.text('LAPORAN REKAPITULASI PRESENSI PKL SISWA', 105, 38, { align: 'center' });
+    const judulReport = userRole === 'dudi' 
+      ? `LAPORAN PRESENSI PKL — ${userDudi.toUpperCase()}`
+      : 'LAPORAN REKAPITULASI PRESENSI PKL SISWA';
+    doc.text(judulReport, 105, 38, { align: 'center' });
 
     const tableRows = filteredData.map((item, index) => [
       index + 1,
+      item.nis || '-',
       item.nama,
+      item.dudi || '-',
       item.tanggal,
       item.waktu_masuk || '-',
       item.jam_keluar || '-',
@@ -168,7 +187,7 @@ export default function RekapPage() {
 
     autoTable(doc, {
       startY: 44,
-      head: [['No', 'Nama Siswa', 'Tanggal', 'Jam Masuk', 'Jam Keluar', 'Status']],
+      head: [['No', 'NIS', 'Nama Siswa', 'DUDI / Sekolah', 'Tanggal', 'Masuk', 'Keluar', 'Status']],
       body: tableRows,
       theme: 'grid',
       headStyles: { fillColor: [0, 51, 102] },
@@ -177,14 +196,13 @@ export default function RekapPage() {
     doc.save(`Laporan_Presensi_PKL_${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  // Map Teks Jabatan
   const getRoleLabel = (role: string) => {
     switch (role) {
       case 'admin_baak': return 'Admin (BAAK)';
-      case 'guru': return 'Guru Pembimbing';
       case 'staff_baak': return 'Staff BAAK';
       case 'kaprodi': return 'Ka.Prodi';
       case 'dekan': return 'Dekan';
+      case 'dudi': return 'Pembimbing DUDI / Sekolah';
       default: return 'Pengelola';
     }
   };
@@ -192,14 +210,22 @@ export default function RekapPage() {
   return (
     <div className="min-h-screen bg-slate-100 p-4 md:p-8">
       <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-md p-6 space-y-6">
-        
-        {/* Header & Status Login Role */}
+
+        {/* Header & Role Info */}
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-4 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Rekapitulasi Presensi PKL</h1>
-            <p className="text-xs text-slate-500 mt-1">
-              Login Sebagai: <span className="font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{getRoleLabel(userRole)}</span>
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-slate-500">Login Sebagai:</span>
+              <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                {getRoleLabel(userRole)}
+              </span>
+              {userRole === 'dudi' && (
+                <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                  DUDI: {userDudi}
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
             <a href="/logbook" className="text-xs bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 transition">
@@ -217,10 +243,10 @@ export default function RekapPage() {
         {/* Filter & Tombol Ekspor */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-lg">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Cari Nama Siswa</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Cari NIS / Nama Siswa</label>
             <input
               type="text"
-              placeholder="Ketik nama siswa..."
+              placeholder="Ketik NIS atau Nama..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full px-3 py-1.5 border rounded text-xs text-slate-800"
@@ -260,16 +286,18 @@ export default function RekapPage() {
           </div>
         </div>
 
-        {/* Tabel Rekapitulasi Presensi */}
+        {/* Tabel Rekapitulasi */}
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-slate-800 text-white">
                 <th className="p-3 border">No</th>
-                <th className="p-3 border">Nama Siswa / NIS</th>
+                <th className="p-3 border">NIS</th>
+                <th className="p-3 border">Nama Siswa</th>
+                <th className="p-3 border">DUDI / Sekolah Mitra</th>
                 <th className="p-3 border">Tanggal</th>
-                <th className="p-3 border">Jam Masuk</th>
-                <th className="p-3 border">Jam Keluar</th>
+                <th className="p-3 border">Masuk</th>
+                <th className="p-3 border">Keluar</th>
                 <th className="p-3 border">Status</th>
                 <th className="p-3 border text-center">Foto Bukti</th>
                 <th className="p-3 border text-center">Aksi (Admin Only)</th>
@@ -278,17 +306,23 @@ export default function RekapPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="p-4 text-center text-slate-500">Memuat data...</td>
+                  <td colSpan={10} className="p-4 text-center text-slate-500">Memuat data presensi...</td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-4 text-center text-slate-500">Tidak ada data presensi ditemukan.</td>
+                  <td colSpan={10} className="p-4 text-center text-slate-500">
+                    {userRole === 'dudi' 
+                      ? `Tidak ada data presensi siswa dari DUDI "${userDudi}".` 
+                      : 'Tidak ada data presensi ditemukan.'}
+                  </td>
                 </tr>
               ) : (
                 filteredData.map((item, index) => (
                   <tr key={item.id} className="border-b hover:bg-slate-50">
                     <td className="p-3 border text-center">{index + 1}</td>
+                    <td className="p-3 border font-mono font-bold text-slate-700">{item.nis || '-'}</td>
                     <td className="p-3 border font-medium text-slate-800">{item.nama}</td>
+                    <td className="p-3 border text-slate-600">{item.dudi || '-'}</td>
                     <td className="p-3 border">{item.tanggal}</td>
                     <td className="p-3 border text-emerald-700 font-mono">{item.waktu_masuk || '-'}</td>
                     <td className="p-3 border text-blue-700 font-mono">{item.jam_keluar || '-'}</td>
@@ -304,7 +338,6 @@ export default function RekapPage() {
                         <span className="text-slate-400 italic">-</span>
                       )}
                     </td>
-                    {/* Kolom Aksi Terproteksi Role */}
                     <td className="p-3 border text-center">
                       {userRole === 'admin_baak' ? (
                         <div className="flex justify-center gap-1.5">
@@ -341,6 +374,16 @@ export default function RekapPage() {
             <h3 className="text-lg font-bold text-slate-800 border-b pb-2">Edit Data Presensi (Admin BAAK)</h3>
             <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
               <div>
+                <label className="block font-medium text-slate-700 mb-1">NIS Siswa</label>
+                <input
+                  type="text"
+                  value={editData.nis || ''}
+                  onChange={(e) => setEditData({ ...editData, nis: e.target.value })}
+                  className="w-full px-3 py-2 border rounded text-slate-800 font-mono"
+                  required
+                />
+              </div>
+              <div>
                 <label className="block font-medium text-slate-700 mb-1">Nama Siswa</label>
                 <input
                   type="text"
@@ -348,6 +391,15 @@ export default function RekapPage() {
                   onChange={(e) => setEditData({ ...editData, nama: e.target.value })}
                   className="w-full px-3 py-2 border rounded text-slate-800"
                   required
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">DUDI / Sekolah Mitra</label>
+                <input
+                  type="text"
+                  value={editData.dudi || ''}
+                  onChange={(e) => setEditData({ ...editData, dudi: e.target.value })}
+                  className="w-full px-3 py-2 border rounded text-slate-800"
                 />
               </div>
               <div>
