@@ -157,16 +157,31 @@ export default function FormAbsensiPage() {
     <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-xl shadow-md overflow-hidden p-6 space-y-6">
         {/* KODE BARU */}
-<div className="flex flex-col md:flex-row md:items-center justify-between border-b pb-3 gap-2">
-  <div>
-    <h1 className="text-lg font-bold text-slate-800 leading-tight">
+{/* Header Judul Resmi Bertingkat */}
+<div className="border-b pb-4 mb-4">
+  {/* Tombol Login Pengelola (Pojok Kanan Atas) */}
+  <div className="flex justify-end mb-2">
+    <a
+      href="/login"
+      className="text-[11px] bg-slate-800 hover:bg-slate-700 text-white font-medium px-3 py-1.5 rounded-lg shadow-sm transition flex items-center gap-1"
+    >
+      🔒 <span>Login Pengelola / DUDI</span>
+    </a>
+  </div>
+
+  {/* Judul Bertingkat Rapi & Simetris */}
+  <div className="text-center space-y-0.5">
+    <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">
       Absensi Siswa PKL
     </h1>
-    <p className="text-xs font-semibold text-blue-700 mt-0.5">
+    <h2 className="text-xs font-bold text-blue-700 uppercase tracking-wide">
       Fakultas Sains dan Teknologi
+    </h2>
+    <h3 className="text-xs font-semibold text-slate-600">
       Universitas Labuhanbatu
-    </p>
+    </h3>
   </div>
+</div>
   <a href="/login" className="self-start md:self-auto text-xs bg-slate-800 text-white px-3 py-1.5 rounded hover:bg-slate-700 font-medium transition">
     🔒 Login Pengelola / DUDI
   </a>
